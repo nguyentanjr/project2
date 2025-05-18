@@ -51,9 +51,45 @@ class DVrouter(Router):
             if changed:
                 self.broadcast_dv()
 
-    
+    def handle_packet(self, port, packet):
+        if packet.is_traceroute:
+            # Forward traceroute packets based on our distance vector
+            dst = packet.dst_addr
+            if dst in self.distance_vector:
+                cost, next_hop = self.distance_vector[dst]
+                if next_hop is not None:  # We know a route
+                    for p, (neighbor, _) in self.neighbors.items():
+                        if neighbor == next_hop:
+                            self.send(p, packet)
+                            break
+        elif packet.is_routing:
+            # Process routing updates from neighbors
+            try:
+                neighbor_dv = json.loads(packet.content)
+                neighbor_addr = packet.src_addr
+                
+                # Update our distance vector
+                changed = False
+                for dst, cost in neighbor_dv.items():
+                    if dst != str(self.addr):  # Don't update distance to self
+                        neighbor_cost = self.neighbors[port][1]
+                        new_cost = cost + neighbor_cost
+                        
+                        if dst not in self.distance_vector or new_cost < self.distance_vector[dst][0]:
+                            self.distance_vector[dst] = (new_cost, neighbor_addr)
+                            changed = True
+                        elif self.distance_vector[dst][1] == neighbor_addr and new_cost != self.distance_vector[dst][0]:
+                            # Update cost if next hop is the same
+                            self.distance_vector[dst] = (new_cost, neighbor_addr)
+                            changed = True
+                
+                # If our distance vector changed, broadcast it
+                if changed:
+                    self.broadcast_dv()
+            except json.JSONDecodeError:
+                pass  # Invalid packet content
 
-    def handle_time(self, time_ms):
+    def handle_time(self, time_ms):  # được gọi liên tục để xác định đủ thời gian gửi DV mới hay ko
         # Send periodic updates
         if time_ms - self.last_sent_time >= self.heartbeat_time:
             self.broadcast_dv()
