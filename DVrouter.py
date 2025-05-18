@@ -19,19 +19,19 @@ class DVrouter(Router):
 
     def __init__(self, addr, heartbeat_time):
         Router.__init__(self, addr)
-        # Distance vector: maps destination to (cost, next_hop)
+        # Véc tơ khoảng cách: ánh xạ đích đến (chi phí, next_hop)
         self.distance_vector = {addr: (0, None)}  # Distance to self is 0
-        # Neighbors: maps port to (neighbor_addr, cost)
+        # Hàng xóm: ánh xạ cổng tới (neighbor_addr, cost)
         self.neighbors = {}
         self.last_sent_time = 0
         self.heartbeat_time = heartbeat_time
-        self.INFINITY = 16  # Standard infinity value for RIP
+        self.INFINITY = 16  # Giá trị vô cực chuẩn cho RIP
 
     def handle_new_link(self, port, endpoint, cost):
-        # Add new neighbor
+        # Thêm hxom mới
         self.neighbors[port] = (endpoint, cost)
         
-        # Update distance vector
+        # Cập nhật distance vector
         if endpoint not in self.distance_vector or cost < self.distance_vector[endpoint][0]:
             self.distance_vector[endpoint] = (cost, endpoint)
             self.broadcast_dv()
@@ -41,7 +41,7 @@ class DVrouter(Router):
             neighbor = self.neighbors[port][0]
             del self.neighbors[port]
             
-            # Remove routes through this neighbor
+            # Xóa các routes qua hàng xóm này
             changed = False
             for dst in list(self.distance_vector.keys()):
                 if dst != self.addr and self.distance_vector[dst][1] == neighbor:
@@ -53,7 +53,7 @@ class DVrouter(Router):
 
     def handle_packet(self, port, packet):
         if packet.is_traceroute:
-            # Forward traceroute packets based on our distance vector
+            # Chuyển tiếp các gói traceroute dựa trên distance vector
             dst = packet.dst_addr
             if dst in self.distance_vector:
                 cost, next_hop = self.distance_vector[dst]
@@ -63,15 +63,15 @@ class DVrouter(Router):
                             self.send(p, packet)
                             break
         elif packet.is_routing:
-            # Process routing updates from neighbors
+            # xử lý cập nhật định tuyến từ hàng xóm
             try:
                 neighbor_dv = json.loads(packet.content)
                 neighbor_addr = packet.src_addr
                 
-                # Update our distance vector
+                # Cập nhật distance vector
                 changed = False
                 for dst, cost in neighbor_dv.items():
-                    if dst != str(self.addr):  # Don't update distance to self
+                    if dst != str(self.addr):  # Không cập nhật khoảng cách tới bản thân
                         neighbor_cost = self.neighbors[port][1]
                         new_cost = cost + neighbor_cost
                         
@@ -79,24 +79,24 @@ class DVrouter(Router):
                             self.distance_vector[dst] = (new_cost, neighbor_addr)
                             changed = True
                         elif self.distance_vector[dst][1] == neighbor_addr and new_cost != self.distance_vector[dst][0]:
-                            # Update cost if next hop is the same
+                            # Cập nhật chi phí nếu next hop giống nhau
                             self.distance_vector[dst] = (new_cost, neighbor_addr)
                             changed = True
                 
-                # If our distance vector changed, broadcast it
+                # Nếu distance vector thay đổi , cập nhất broadcast
                 if changed:
                     self.broadcast_dv()
             except json.JSONDecodeError:
-                pass  # Invalid packet content
+                pass  
 
     def handle_time(self, time_ms):  # được gọi liên tục để xác định đủ thời gian gửi DV mới hay ko
-        # Send periodic updates
+        # Gửi các bản cập nhật định kỳ
         if time_ms - self.last_sent_time >= self.heartbeat_time:
             self.broadcast_dv()
             self.last_sent_time = time_ms
 
     def broadcast_dv(self):
-        # Create and send distance vector to all neighbors
+        # Tạo và gửi distance vector đến tất cả các hàng xóm
         dv_str = json.dumps({str(dst): cost for dst, (cost, _) in self.distance_vector.items()})
         for port in self.neighbors:
             packet = Packet(Packet.ROUTING, self.addr, self.neighbors[port][0], dv_str)
