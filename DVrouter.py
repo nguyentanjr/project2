@@ -18,7 +18,7 @@ class DVrouter(Router):
     """
 
     def __init__(self, addr, heartbeat_time):
-        super().__init__(addr, heartbeat_time)
+        Router.__init__(self, addr)
         # Distance vector: maps destination to (cost, next_hop)
         self.distance_vector = {addr: (0, None)}  # Distance to self is 0
         # Neighbors: maps port to (neighbor_addr, cost)
